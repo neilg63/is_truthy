@@ -1,0 +1,13 @@
+[package]
+name = "is-truthy"
+version = "0.1.0"
+edition = "2021"
+description = "Flexible boolean parsing from string values with core, standard and custom truthy/falsy matching"
+license = "MIT"
+keywords = ["boolean", "truthy", "parsing", "string", "validation"]
+categories = ["text-processing", "parsing"]
+
+[dependencies]
+alphanumeric = { path = "../alphanumeric" }
+simple-string-patterns = { path = "../simple-string-patterns" }
+to_segments = { path = "../to_segments" }
