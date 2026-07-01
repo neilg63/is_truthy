@@ -49,6 +49,7 @@ pub fn is_truthy_standard(txt: &str, empty_is_false: bool) -> Option<bool> {
     if let Some(core_match) = is_truthy_core(txt, empty_is_false) {
         Some(core_match)
     } else {
+
         match txt.trim().to_lowercase().as_str() {
             "no" | "not" | "none" | "n" | "✗" | "✕" | "☒" | "❌" => Some(false),
             "ok" | "okay" | "y" | "yes" | "✓" | "☑" | "✔" | "✅" => Some(true),
@@ -65,15 +66,13 @@ pub fn has_true_and_false_options(opts: &[TruthyOption]) -> bool {
 
 pub fn is_truthy_custom(
     txt: &str,
-    opts: &[TruthyOption],
-    use_defaults: bool,
-    empty_is_false: bool,
+    rules: &TruthyRuleSet,
 ) -> Option<bool> {
-    if !has_true_and_false_options(opts) {
+    if !has_true_and_false_options(&rules.options()) {
         return None;
     }
     let txt = txt.trim();
-    for opt in opts {
+    for opt in rules.options() {
         let pattern = opt.pattern();
         let matched = if opt.case_sensitive {
             match opt.match_mode {
@@ -94,11 +93,17 @@ pub fn is_truthy_custom(
             return Some(opt.is_true);
         }
     }
-    if use_defaults {
-        is_truthy_core(txt, empty_is_false)
-    } else {
-        None
+    if rules.use_defaults  {
+        if let Some(core_match) = is_truthy_in_range(txt, rules.empty_is_false, rules.min(), rules.max()) {
+            return Some(core_match);
+        }
     }
+    if rules.use_standard  {
+        if let Some(core_match) = is_truthy_standard(txt, rules.empty_is_false) {
+            return Some(core_match);
+        }
+    }
+    None
 }
 
 pub trait IsTruthy {
@@ -118,9 +123,7 @@ pub trait IsTruthy {
     fn is_truthy_standard(&self, empty_is_false: bool) -> Option<bool>;
     fn is_truthy_custom(
         &self,
-        opts: &[TruthyOption],
-        use_defaults: bool,
-        empty_is_false: bool,
+        rules: &TruthyRuleSet,
     ) -> Option<bool>;
 }
 
@@ -136,11 +139,9 @@ impl<T: AsRef<str>> IsTruthy for T {
     }
     fn is_truthy_custom(
         &self,
-        opts: &[TruthyOption],
-        use_defaults: bool,
-        empty_is_false: bool,
+        rules: &TruthyRuleSet,
     ) -> Option<bool> {
-        is_truthy_custom(self.as_ref(), opts, use_defaults, empty_is_false)
+        is_truthy_custom(self.as_ref(), rules)
     }
 }
 
@@ -203,8 +204,124 @@ impl TruthyOption {
         self
     }
 
+    pub fn set_case_sensitive(mut self, value: bool) -> Self {
+        if self.case_sensitive != value {
+            self.case_sensitive = value;
+        }
+        self
+    }
+
     pub fn pattern(&self) -> &str {
         &self.pattern
+    }
+}
+
+/// Bundles custom truthy/falsy patterns with fallback behaviour.
+/// Build once, reuse across many rows.
+#[derive(Debug, Clone)]
+pub struct TruthyRuleSet {
+    opts: Vec<TruthyOption>,
+    use_defaults: bool,
+    use_standard: bool,
+    empty_is_false: bool,
+    min_max: Option<(i8, i8)>,
+}
+
+impl TruthyRuleSet {
+    pub fn new() -> Self {
+        Self {
+            opts: vec![],
+            use_defaults: false,
+            use_standard: false,
+            empty_is_false: false,
+            min_max: None,
+        }
+    }
+
+    pub fn add_true(mut self, pattern: &str) -> Self {
+        self.opts.push(TruthyOption::new_true(pattern));
+        self
+    }
+
+    pub fn add_true_option(mut self, pattern: &str, mode: MatchMode, case_sensitive: bool) -> Self {
+        self.opts.push(TruthyOption::new_true(pattern).match_mode(mode).set_case_sensitive(case_sensitive));
+        self
+    }
+
+    pub fn add_false(mut self, pattern: &str) -> Self {
+        self.opts.push(TruthyOption::new_false(pattern));
+        self
+    }
+
+    pub fn add_false_option(mut self, pattern: &str, mode: MatchMode, case_sensitive: bool) -> Self {
+        self.opts.push(TruthyOption::new_false(pattern).match_mode(mode).set_case_sensitive(case_sensitive));
+        self
+    }
+
+    pub fn add(mut self, opt: TruthyOption) -> Self {
+        self.opts.push(opt);
+        self
+    }
+
+    pub fn empty_is_false(mut self) -> Self {
+        self.empty_is_false = true;
+        self
+    }
+
+    pub fn use_defaults(mut self) -> Self {
+        self.use_defaults = true;
+        self
+    }
+
+    pub fn use_standard(mut self) -> Self {
+        self.use_standard = true;
+        self.use_defaults = true;
+        self
+    }
+
+
+
+    pub fn set_min_max(mut self, min: i8, max: i8) -> Self {
+        if min > max  && min <= 0 && max >= 1 {
+            self.min_max = Some((min, max));
+        }
+        self
+    }
+
+    pub fn min(&self) -> i8 {
+        if let Some((min, _max)) = self.min_max {
+            min
+        } else {
+            DEFAULT_NUM_MIN
+        }
+    }
+
+    pub fn max(&self) -> i8 {
+        if let Some((_min, max)) = self.min_max {
+            max
+        } else {
+            DEFAULT_NUM_MAX
+        }
+    }
+
+    pub fn parse(&self, txt: &str) -> Option<bool> {
+        if has_true_and_false_options(&self.opts) {
+            let result = is_truthy_custom(txt, &self);
+            if result.is_some() {
+                return result;
+            }
+        }
+        if self.use_standard {
+            is_truthy_standard(txt, self.empty_is_false)
+        } else if self.use_defaults {
+            is_truthy_core(txt, self.empty_is_false)
+        } else {
+            None
+        }
+    }
+
+    pub fn options(&self) -> &[TruthyOption] {
+        &self.opts
     }
 }
 
@@ -269,75 +386,147 @@ pub fn to_truth_options(
 mod tests {
     use super::*;
 
+    // --- IsTruthy trait ---
+
     #[test]
-    fn test_truthy_core() {
-        assert_eq!("1".is_truthy_core(false), Some(true));
-        assert_eq!("0".is_truthy_core(false), Some(false));
-        assert_eq!("false".is_truthy_core(false), Some(false));
-        assert_eq!("true".is_truthy_core(false), Some(true));
-        assert_eq!("-1".is_truthy_core(false), Some(false));
-        assert_eq!("99".is_truthy_core(false), None);
+    fn test_is_truthy_default() {
+        // is_truthy() delegates to is_truthy_core with empty_is_false = false
+        assert_eq!("true".is_truthy(), Some(true));
+        assert_eq!("false".is_truthy(), Some(false));
+        assert_eq!("1".is_truthy(), Some(true));
+        assert_eq!("0".is_truthy(), Some(false));
+        assert_eq!("-1".is_truthy(), Some(false));
+        assert_eq!("".is_truthy(), None);
+        assert_eq!("  ".is_truthy(), None);
+        assert_eq!("hello".is_truthy(), None);
+        assert_eq!("99".is_truthy(), None);
+        assert_eq!(String::from("true").is_truthy(), Some(true));
+    }
+
+    #[test]
+    fn test_is_truthy_core_empty_handling() {
         assert_eq!("".is_truthy_core(false), None);
         assert_eq!("".is_truthy_core(true), Some(false));
     }
 
     #[test]
-    fn test_truthy_standard() {
-        assert_eq!("n".is_truthy_standard(false), Some(false));
-        assert_eq!("Ok".is_truthy_standard(false), Some(true));
+    fn test_is_truthy_standard() {
+        // standard is a superset of core
         assert_eq!("yes".is_truthy_standard(false), Some(true));
-        assert_eq!("false".is_truthy_standard(false), Some(false));
+        assert_eq!("y".is_truthy_standard(false), Some(true));
+        assert_eq!("Ok".is_truthy_standard(false), Some(true));
+        assert_eq!("n".is_truthy_standard(false), Some(false));
+        assert_eq!("no".is_truthy_standard(false), Some(false));
+        assert_eq!("none".is_truthy_standard(false), Some(false));
+        // core values still work
+        assert_eq!("true".is_truthy_standard(false), Some(true));
+        assert_eq!("1".is_truthy_standard(false), Some(true));
+        assert_eq!("0".is_truthy_standard(false), Some(false));
+        // unrecognised
         assert_eq!("maybe".is_truthy_standard(false), None);
     }
 
     #[test]
-    fn test_builder_pattern() {
-        let opts = vec![
-            TruthyOption::new_true("posi").match_mode(MatchMode::StartsWith),
-            TruthyOption::new_false("neg").match_mode(MatchMode::StartsWith),
-            TruthyOption::new_true("baar").match_mode(MatchMode::EndsWith),
-            TruthyOption::new_false("kötü").match_mode(MatchMode::Contains),
-            TruthyOption::new_true("Oui").case_sensitive(),
-        ];
+    fn test_is_truthy_custom() {
+        // standard is a superset of core
+        let rules = TruthyRuleSet::new()
+            .add_true("oui")
+            .add_false("non")
+            .use_standard();
+        let text_true_strings = ["oui", "yes", "y", "1", "true"];
+        for txt in text_true_strings {
+            assert_eq!(txt.is_truthy_custom(&rules), Some(true), "Failed true for input: {}", txt);
+        }
+        let text_false_strings = ["non", "no", "n", "0", "false"];
+        for txt in text_false_strings {
+            assert_eq!(txt.is_truthy_custom(&rules), Some(false), "Failed false for input: {}", txt);
+        }
+    }
 
-        // starts_with matches (case-insensitive)
-        assert_eq!("Positif".is_truthy_custom(&opts, false, false), Some(true));
-        assert_eq!(
-            "negative".is_truthy_custom(&opts, false, false),
-            Some(false)
-        );
 
-        // ends_with match
-        assert_eq!("foobaar".is_truthy_custom(&opts, false, false), Some(true));
-        assert_eq!("baar".is_truthy_custom(&opts, false, false), Some(true));
-        assert_eq!("baarx".is_truthy_custom(&opts, false, false), None);
+    // --- TruthyRuleSet ---
 
-        // contains match
-        assert_eq!(
-            "çok kötü".is_truthy_custom(&opts, false, false),
-            Some(false)
-        );
-        assert_eq!(
-            "herkötüdür".is_truthy_custom(&opts, false, false),
-            Some(false)
-        );
+    #[test]
+    fn test_ruleset_minimal() {
+        // one true + one false pattern is all you need
+        let rules = TruthyRuleSet::new()
+            .add_true("si")
+            .add_false("no");
 
-        // case-sensitive exact: must match case
-        assert_eq!("Oui".is_truthy_custom(&opts, false, false), Some(true));
-        assert_eq!("oui".is_truthy_custom(&opts, false, false), None);
-
-        // no match returns None
-        assert_eq!("maybe".is_truthy_custom(&opts, false, false), None);
+        assert_eq!(rules.parse("si"), Some(true));
+        assert_eq!(rules.parse("no"), Some(false));
+        // no fallback — unrecognised returns None
+        assert_eq!(rules.parse("yes"), None);
+        assert_eq!(rules.parse("1"), None);
+        assert_eq!(rules.parse(""), None);
     }
 
     #[test]
-    fn test_truthy_custom_from_str() {
-        let custom_setting_str = "truthy:si|vero,no|falso";
-        let custom_flags =
-            split_truthy_custom_option_str(custom_setting_str, false, MatchMode::Exact);
+    fn test_ruleset_use_standard() {
+        // custom patterns + standard English + core numeric/boolean
+        let rules = TruthyRuleSet::new()
+            .add_true("si")
+            .add_false("no")
+            .use_standard();
 
-        assert_eq!("yes".is_truthy_custom(&custom_flags, true, false), None);
-        assert_eq!("false".is_truthy_custom(&custom_flags, false, false), None);
-        assert_eq!("si".is_truthy_custom(&custom_flags, true, true), Some(true));
+        // custom patterns match first
+        assert_eq!(rules.parse("si"), Some(true));
+        assert_eq!(rules.parse("no"), Some(false));
+        // standard English words
+        assert_eq!(rules.parse("yes"), Some(true));
+        assert_eq!(rules.parse("n"), Some(false));
+        // core values via standard fallback
+        assert_eq!(rules.parse("true"), Some(true));
+        assert_eq!(rules.parse("0"), Some(false));
+        // unrecognised
+        assert_eq!(rules.parse("forse"), None);
+    }
+
+    #[test]
+    fn test_ruleset_use_defaults_without_standard() {
+        // custom + core (true/false/0/1) but NOT English words
+        let rules = TruthyRuleSet::new()
+            .add_true("ok")
+            .add_false("fail")
+            .use_defaults();
+
+        assert_eq!(rules.parse("ok"), Some(true));
+        assert_eq!(rules.parse("fail"), Some(false));
+        assert_eq!(rules.parse("1"), Some(true));
+        assert_eq!(rules.parse("true"), Some(true));
+        // standard words are NOT recognised
+        assert_eq!(rules.parse("yes"), None);
+        assert_eq!(rules.parse("n"), None);
+    }
+
+    #[test]
+    fn test_ruleset_empty_is_false() {
+        let rules = TruthyRuleSet::new()
+            .add_true("ok")
+            .add_false("fail")
+            .empty_is_false()
+            .use_defaults();
+
+        assert_eq!(rules.parse(""), Some(false));
+        assert_eq!(rules.parse("  "), Some(false));
+    }
+
+    #[test]
+    fn test_ruleset_with_match_modes() {
+        let rules = TruthyRuleSet::new()
+            .add_true_option("posi",MatchMode::StartsWith, false)
+            .add_false_option("neg",MatchMode::StartsWith, false)
+            .add_true_option("baar",MatchMode::EndsWith, false)
+            .add_false_option("kötü",MatchMode::Contains, false)
+            .add_true_option("Oui",MatchMode::Exact, true);
+
+        assert_eq!(rules.parse("Positif"), Some(true));
+        assert_eq!(rules.parse("negative"), Some(false));
+        assert_eq!(rules.parse("foobaar"), Some(true));
+        assert_eq!(rules.parse("baarx"), None);
+        assert_eq!(rules.parse("çok kötü"), Some(false));
+        assert_eq!(rules.parse("herkötüdür"), Some(false));
+        assert_eq!(rules.parse("Oui"), Some(true));
+        assert_eq!(rules.parse("oui"), None);
     }
 }
