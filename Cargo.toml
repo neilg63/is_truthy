@@ -3,6 +3,7 @@ name = "is-truthy"
 version = "0.1.0"
 edition = "2021"
 description = "Flexible boolean parsing from string values with core, standard and custom truthy/falsy matching"
+repository = "https://github.com/neilg63/is-truthy"
 license = "MIT"
 keywords = ["boolean", "truthy", "parsing", "string", "validation"]
 categories = ["text-processing", "parsing"]
