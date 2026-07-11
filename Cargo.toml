@@ -8,6 +8,6 @@ keywords = ["boolean", "truthy", "parsing", "string", "validation"]
 categories = ["text-processing", "parsing"]
 
 [dependencies]
-alphanumeric = { path = "../alphanumeric" }
-simple-string-patterns = { path = "../simple-string-patterns" }
-to_segments = { path = "../to_segments" }
+alphanumeric = "0.2.0"
+simple-string-patterns = "0.4.0"
+to_segments = "0.1.2"

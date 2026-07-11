@@ -1,43 +1,31 @@
-# Cargo build output
+# Build artifacts
 /target
 
-# rustfmt backup files
-**/*.rs.bk
+# OS
+.DS_Store
+Thumbs.db
 
-# MSVC debugging files
-*.pdb
-
-# Cargo.lock — ignore for libraries, commit for binaries
-# Cargo.lock
-
-# VS Code
+# Editors / IDEs
 .vscode/
-
-# JetBrains (IntelliJ, RustRover, CLion)
 .idea/
 *.iml
-
-# Vim/Neovim
+.vs/
+.fleet/
+.zed/
+.helix/
+*.sublime-workspace
+*.sublime-project
 *.swp
 *.swo
 *~
-Session.vim
-.netrwhist
 
-# Emacs
-\#*\#
-.\#*
-
-# Sublime Text
-*.sublime-workspace
-*.sublime-project
-
-# macOS
-.DS_Store
-
-# Windows
-Thumbs.db
-Desktop.ini
-
-# Claude
+# AI coding assistants
 .claude
+.cursor/
+.windsurf/
+.continue/
+.aider*
+.clinerules/
+.roo/
+.codeium/
+.cody/

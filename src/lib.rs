@@ -4,8 +4,8 @@ use alphanumeric::StripCharacters;
 use simple_string_patterns::SimpleMatch;
 use to_segments::ToSegments;
 
-const DEFAULT_NUM_MIN: i8 = -2;
-const DEFAULT_NUM_MAX: i8 = 2;
+const DEFAULT_NUM_MIN: i8 = 0;
+const DEFAULT_NUM_MAX: i8 = 1;
 
 /// Language-agnostic truthy/falsy string matcher.
 /// Only strings representing low integers (-2 to 2), as well as case-insensitive "true" and "false"
@@ -238,21 +238,25 @@ impl TruthyRuleSet {
         }
     }
 
+    /// Add simple true option with default case-insensitive exact matching.
     pub fn add_true(mut self, pattern: &str) -> Self {
         self.opts.push(TruthyOption::new_true(pattern));
         self
     }
 
+    // Add simple true option with match mode and case sensitivity specified.
     pub fn add_true_option(mut self, pattern: &str, mode: MatchMode, case_sensitive: bool) -> Self {
         self.opts.push(TruthyOption::new_true(pattern).match_mode(mode).set_case_sensitive(case_sensitive));
         self
     }
 
+    /// Add simple false option with default case-insensitive exact matching.
     pub fn add_false(mut self, pattern: &str) -> Self {
         self.opts.push(TruthyOption::new_false(pattern));
         self
     }
 
+    /// Add simple false option with match mode and case sensitivity specified.
     pub fn add_false_option(mut self, pattern: &str, mode: MatchMode, case_sensitive: bool) -> Self {
         self.opts.push(TruthyOption::new_false(pattern).match_mode(mode).set_case_sensitive(case_sensitive));
         self
@@ -263,16 +267,19 @@ impl TruthyRuleSet {
         self
     }
 
+    /// Set empty strings to be treated as false.
     pub fn empty_is_false(mut self) -> Self {
         self.empty_is_false = true;
         self
     }
 
+    /// Use default language-neutraltruthy/falsy options (0, 1, true, false) as a fallback if no custom options match.
     pub fn use_defaults(mut self) -> Self {
         self.use_defaults = true;
         self
     }
 
+    /// Use common English-medium truthy/falsy options 'y', 'n', 'yes', 'no', 'ok', 'none', 'not' + a few emojis as a fallback if no custom options match.
     pub fn use_standard(mut self) -> Self {
         self.use_standard = true;
         self.use_defaults = true;
@@ -280,9 +287,10 @@ impl TruthyRuleSet {
     }
 
 
-
+    /// Define a custom range of integers that are considered truthy/falsy.
+    /// Numeric strings outside this range will be ignored.
     pub fn set_min_max(mut self, min: i8, max: i8) -> Self {
-        if min > max  && min <= 0 && max >= 1 {
+        if max > min && min <= 0 && max >= 1 {
             self.min_max = Some((min, max));
         }
         self
@@ -304,6 +312,7 @@ impl TruthyRuleSet {
         }
     }
 
+    /// Parse a string using the custom truthy/falsy options, with optional fallbacks to standard or default options.
     pub fn parse(&self, txt: &str) -> Option<bool> {
         if has_true_and_false_options(&self.opts) {
             let result = is_truthy_custom(txt, &self);
@@ -320,6 +329,7 @@ impl TruthyRuleSet {
         }
     }
 
+    /// Get all options in this ruleset, including true and false options.
     pub fn options(&self) -> &[TruthyOption] {
         &self.opts
     }
@@ -330,25 +340,6 @@ pub fn extract_truth_patterns(opts: &[TruthyOption], is_true: bool) -> Vec<Strin
         .filter(|o| o.is_true == is_true)
         .map(|o| o.pattern.to_string())
         .collect()
-}
-
-/// Convert a custom string setting into a full set of TruthyOptions.
-/// e.g. "truthy:ok,good|failed,bad" translates into two true options (ok, good)
-/// and two false options (failed, bad).
-/// case_sensitive and match_mode are applied globally.
-pub fn split_truthy_custom_option_str(
-    custom_str: &str,
-    case_sensitive: bool,
-    match_mode: MatchMode,
-) -> Vec<TruthyOption> {
-    if let (Some(head), Some(tail)) = custom_str.to_head_tail(":") {
-        if let (Some(first), second) = tail.to_head_tail(",") {
-            if !first.is_empty() && head.starts_with_ci_alphanum("tr") {
-                return to_truth_options(first, second.unwrap_or(""), case_sensitive, match_mode);
-            }
-        }
-    }
-    vec![]
 }
 
 /// Split a comma-separated string of true and false options into a list of TruthyOptions.
@@ -395,7 +386,10 @@ mod tests {
         assert_eq!("false".is_truthy(), Some(false));
         assert_eq!("1".is_truthy(), Some(true));
         assert_eq!("0".is_truthy(), Some(false));
-        assert_eq!("-1".is_truthy(), Some(false));
+        // -1 is outside the default 0..=1 range now: could mean "true" under naive
+        // MySQL/PHP nonzero-is-true casting, or a "not found"/sentinel value from
+        // elsewhere — ambiguous enough that the default should refuse to guess.
+        assert_eq!("-1".is_truthy(), None);
         assert_eq!("".is_truthy(), None);
         assert_eq!("  ".is_truthy(), None);
         assert_eq!("hello".is_truthy(), None);
@@ -445,6 +439,29 @@ mod tests {
 
 
     // --- TruthyRuleSet ---
+
+    #[test]
+    fn test_set_min_max_actually_applies() {
+        // set_min_max's guard condition used to be `min > max && min <= 0 && max >= 1`,
+        // which is a contradiction (min <= 0 && max >= 1 implies min < max) and so could
+        // never be true for any input — the custom range silently never took effect.
+        let rules = TruthyRuleSet::new()
+            .add_true("ok")
+            .add_false("fail")
+            .use_defaults()
+            .set_min_max(-3, 3);
+        assert_eq!(rules.min(), -3);
+        assert_eq!(rules.max(), 3);
+        assert_eq!(rules.parse("3"), Some(true));
+        assert_eq!(rules.parse("-3"), Some(false));
+        // out of the custom range now, even though it was in the old hardcoded default
+        assert_eq!(rules.parse("2"), Some(true));
+
+        // an invalid range (min >= max, or outside the 0/1 straddle) leaves the default
+        let unchanged = TruthyRuleSet::new().set_min_max(5, -3);
+        assert_eq!(unchanged.min(), DEFAULT_NUM_MIN);
+        assert_eq!(unchanged.max(), DEFAULT_NUM_MAX);
+    }
 
     #[test]
     fn test_ruleset_minimal() {
