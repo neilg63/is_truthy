@@ -4,8 +4,8 @@ use alphanumeric::StripCharacters;
 use simple_string_patterns::SimpleMatch;
 use to_segments::ToSegments;
 
-const DEFAULT_NUM_MIN: i8 = -2;
-const DEFAULT_NUM_MAX: i8 = 2;
+const DEFAULT_NUM_MIN: i8 = 0;
+const DEFAULT_NUM_MAX: i8 = 1;
 
 /// Language-agnostic truthy/falsy string matcher.
 /// Only strings representing low integers (-2 to 2), as well as case-insensitive "true" and "false"
@@ -40,6 +40,17 @@ pub fn is_truthy_in_range(txt: &str, empty_is_false: bool, min: i8, max: i8) -> 
     }
 }
 
+// Common English/international truthy-falsy words and symbols only, with no numeric or
+// literal true/false matching — shared by `is_truthy_standard` (fixed default range) and
+// `TruthyRuleSet`'s own fallback (range-aware, respects `set_min_max`).
+fn standard_word_match(txt: &str) -> Option<bool> {
+    match txt.trim().to_lowercase().as_str() {
+        "no" | "not" | "none" | "n" | "✗" | "✕" | "☒" | "❌" => Some(false),
+        "ok" | "okay" | "y" | "yes" | "✓" | "☑" | "✔" | "✅" => Some(true),
+        _ => None,
+    }
+}
+
 /*
     Standard truthy/falsy string matcher, interpreting generic
     English or international truthy/falsy markers.
@@ -49,13 +60,25 @@ pub fn is_truthy_standard(txt: &str, empty_is_false: bool) -> Option<bool> {
     if let Some(core_match) = is_truthy_core(txt, empty_is_false) {
         Some(core_match)
     } else {
+        standard_word_match(txt)
+    }
+}
 
-        match txt.trim().to_lowercase().as_str() {
-            "no" | "not" | "none" | "n" | "✗" | "✕" | "☒" | "❌" => Some(false),
-            "ok" | "okay" | "y" | "yes" | "✓" | "☑" | "✔" | "✅" => Some(true),
-            _ => None,
+// The use_defaults/use_standard fallback shared by `is_truthy_custom` and
+// `TruthyRuleSet::parse`, so both consistently respect a custom `set_min_max` range
+// rather than one of them silently falling back to the hardcoded 0..=1 default.
+fn ruleset_fallback_match(txt: &str, rules: &TruthyRuleSet) -> Option<bool> {
+    if rules.use_defaults {
+        if let Some(core_match) = is_truthy_in_range(txt, rules.empty_is_false, rules.min(), rules.max()) {
+            return Some(core_match);
         }
     }
+    if rules.use_standard {
+        if let Some(word_match) = standard_word_match(txt) {
+            return Some(word_match);
+        }
+    }
+    None
 }
 
 // Check if the provided list of TruthyOptions contains at least
@@ -93,17 +116,7 @@ pub fn is_truthy_custom(
             return Some(opt.is_true);
         }
     }
-    if rules.use_defaults  {
-        if let Some(core_match) = is_truthy_in_range(txt, rules.empty_is_false, rules.min(), rules.max()) {
-            return Some(core_match);
-        }
-    }
-    if rules.use_standard  {
-        if let Some(core_match) = is_truthy_standard(txt, rules.empty_is_false) {
-            return Some(core_match);
-        }
-    }
-    None
+    ruleset_fallback_match(txt, rules)
 }
 
 pub trait IsTruthy {
@@ -238,21 +251,25 @@ impl TruthyRuleSet {
         }
     }
 
+    /// Add simple true option with default case-insensitive exact matching.
     pub fn add_true(mut self, pattern: &str) -> Self {
         self.opts.push(TruthyOption::new_true(pattern));
         self
     }
 
+    // Add simple true option with match mode and case sensitivity specified.
     pub fn add_true_option(mut self, pattern: &str, mode: MatchMode, case_sensitive: bool) -> Self {
         self.opts.push(TruthyOption::new_true(pattern).match_mode(mode).set_case_sensitive(case_sensitive));
         self
     }
 
+    /// Add simple false option with default case-insensitive exact matching.
     pub fn add_false(mut self, pattern: &str) -> Self {
         self.opts.push(TruthyOption::new_false(pattern));
         self
     }
 
+    /// Add simple false option with match mode and case sensitivity specified.
     pub fn add_false_option(mut self, pattern: &str, mode: MatchMode, case_sensitive: bool) -> Self {
         self.opts.push(TruthyOption::new_false(pattern).match_mode(mode).set_case_sensitive(case_sensitive));
         self
@@ -263,16 +280,19 @@ impl TruthyRuleSet {
         self
     }
 
+    /// Set empty strings to be treated as false.
     pub fn empty_is_false(mut self) -> Self {
         self.empty_is_false = true;
         self
     }
 
+    /// Use default language-neutraltruthy/falsy options (0, 1, true, false) as a fallback if no custom options match.
     pub fn use_defaults(mut self) -> Self {
         self.use_defaults = true;
         self
     }
 
+    /// Use common English-medium truthy/falsy options 'y', 'n', 'yes', 'no', 'ok', 'none', 'not' + a few emojis as a fallback if no custom options match.
     pub fn use_standard(mut self) -> Self {
         self.use_standard = true;
         self.use_defaults = true;
@@ -280,9 +300,10 @@ impl TruthyRuleSet {
     }
 
 
-
+    /// Define a custom range of integers that are considered truthy/falsy.
+    /// Numeric strings outside this range will be ignored.
     pub fn set_min_max(mut self, min: i8, max: i8) -> Self {
-        if min > max  && min <= 0 && max >= 1 {
+        if max > min {
             self.min_max = Some((min, max));
         }
         self
@@ -304,22 +325,18 @@ impl TruthyRuleSet {
         }
     }
 
+    /// Parse a string using the custom truthy/falsy options, with optional fallbacks to standard or default options.
     pub fn parse(&self, txt: &str) -> Option<bool> {
         if has_true_and_false_options(&self.opts) {
-            let result = is_truthy_custom(txt, &self);
+            let result = is_truthy_custom(txt, self);
             if result.is_some() {
                 return result;
             }
         }
-        if self.use_standard {
-            is_truthy_standard(txt, self.empty_is_false)
-        } else if self.use_defaults {
-            is_truthy_core(txt, self.empty_is_false)
-        } else {
-            None
-        }
+        ruleset_fallback_match(txt, self)
     }
 
+    /// Get all options in this ruleset, including true and false options.
     pub fn options(&self) -> &[TruthyOption] {
         &self.opts
     }
@@ -330,25 +347,6 @@ pub fn extract_truth_patterns(opts: &[TruthyOption], is_true: bool) -> Vec<Strin
         .filter(|o| o.is_true == is_true)
         .map(|o| o.pattern.to_string())
         .collect()
-}
-
-/// Convert a custom string setting into a full set of TruthyOptions.
-/// e.g. "truthy:ok,good|failed,bad" translates into two true options (ok, good)
-/// and two false options (failed, bad).
-/// case_sensitive and match_mode are applied globally.
-pub fn split_truthy_custom_option_str(
-    custom_str: &str,
-    case_sensitive: bool,
-    match_mode: MatchMode,
-) -> Vec<TruthyOption> {
-    if let (Some(head), Some(tail)) = custom_str.to_head_tail(":") {
-        if let (Some(first), second) = tail.to_head_tail(",") {
-            if !first.is_empty() && head.starts_with_ci_alphanum("tr") {
-                return to_truth_options(first, second.unwrap_or(""), case_sensitive, match_mode);
-            }
-        }
-    }
-    vec![]
 }
 
 /// Split a comma-separated string of true and false options into a list of TruthyOptions.
@@ -395,12 +393,23 @@ mod tests {
         assert_eq!("false".is_truthy(), Some(false));
         assert_eq!("1".is_truthy(), Some(true));
         assert_eq!("0".is_truthy(), Some(false));
-        assert_eq!("-1".is_truthy(), Some(false));
+        // -1 is outside the default 0..=1 range: ambiguous, so it's not recognised.
+        assert_eq!("-1".is_truthy(), None);
         assert_eq!("".is_truthy(), None);
         assert_eq!("  ".is_truthy(), None);
         assert_eq!("hello".is_truthy(), None);
         assert_eq!("99".is_truthy(), None);
         assert_eq!(String::from("true").is_truthy(), Some(true));
+    }
+
+    #[test]
+    fn test_default_range_boundaries() {
+        // Just inside the default 0..=1 range: recognised.
+        assert_eq!("0".is_truthy_core(false), Some(false));
+        assert_eq!("1".is_truthy_core(false), Some(true));
+        // Just outside it on either side: not recognised at all.
+        assert_eq!("-1".is_truthy_core(false), None);
+        assert_eq!("2".is_truthy_core(false), None);
     }
 
     #[test]
@@ -445,6 +454,43 @@ mod tests {
 
 
     // --- TruthyRuleSet ---
+
+    #[test]
+    fn test_set_min_max_actually_applies() {
+        // set_min_max's guard condition used to be `min > max && min <= 0 && max >= 1`,
+        // which is a contradiction (min <= 0 && max >= 1 implies min < max) and so could
+        // never be true for any input — the custom range silently never took effect.
+        let rules = TruthyRuleSet::new()
+            .add_true("ok")
+            .add_false("fail")
+            .use_defaults()
+            .set_min_max(-3, 3);
+        assert_eq!(rules.min(), -3);
+        assert_eq!(rules.max(), 3);
+        assert_eq!(rules.parse("3"), Some(true));
+        assert_eq!(rules.parse("-3"), Some(false));
+        // out of the custom range now, even though it was in the old hardcoded default
+        assert_eq!(rules.parse("2"), Some(true));
+
+        // an invalid range (min >= max) leaves the default in place
+        let unchanged = TruthyRuleSet::new().set_min_max(5, -3);
+        assert_eq!(unchanged.min(), DEFAULT_NUM_MIN);
+        assert_eq!(unchanged.max(), DEFAULT_NUM_MAX);
+    }
+
+    #[test]
+    fn test_set_min_max_accepts_arbitrary_ranges() {
+        // The only requirement is max > min — the range no longer has to straddle 0/1.
+        // Useful when a column was never really boolean but holds integer status/outcome
+        // sentinels, e.g. only values 5 through 10 are meaningful at all; truthiness is
+        // still always `value > 0` regardless of where min/max are set.
+        let rules = TruthyRuleSet::new().use_defaults().set_min_max(5, 10);
+        assert_eq!(rules.min(), 5);
+        assert_eq!(rules.max(), 10);
+        assert_eq!(rules.parse("7"), Some(true));
+        assert_eq!(rules.parse("4"), None); // below the custom window
+        assert_eq!(rules.parse("11"), None); // above it
+    }
 
     #[test]
     fn test_ruleset_minimal() {

@@ -4,9 +4,11 @@ version = 4
 
 [[package]]
 name = "alphanumeric"
-version = "0.1.1"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "497c98358c446f25a9818840e5ce86908d3ef2a0d6099ccc410a8f0eda4cd055"
 dependencies = [
- "to_segments 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "to_segments",
 ]
 
 [[package]]
@@ -15,19 +17,17 @@ version = "0.1.0"
 dependencies = [
  "alphanumeric",
  "simple-string-patterns",
- "to_segments 0.1.2",
+ "to_segments",
 ]
 
 [[package]]
 name = "simple-string-patterns"
 version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f527fa1337913ce8abe0cfff89ae2aa1bb100e5d53892cf54256c6d779108a0"
 dependencies = [
  "alphanumeric",
 ]
-
-[[package]]
-name = "to_segments"
-version = "0.1.2"
 
 [[package]]
 name = "to_segments"
