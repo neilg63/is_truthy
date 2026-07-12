@@ -223,6 +223,7 @@ let rules = TruthyRuleSet::new().add(opt).add_false("not-ready");
 | `is_truthy_standard` | Free-function standard matcher: core, plus common English words and check/cross symbols |
 | `is_truthy_custom` | Free-function custom matcher taking a `&TruthyRuleSet` |
 | `TruthyRuleSet` | Builder for a reusable set of custom true/false patterns with optional standard/core fallback — build once, `.parse()` many times |
+| `TruthyRuleSet::options` / `::true_options` / `::false_options` | Read back the rule set's `TruthyOption`s — all of them, or only the true / false side |
 | `TruthyOption` | A single pattern to match, with its truth value, `MatchMode` and case sensitivity |
 | `MatchMode` | `Exact` / `StartsWith` / `EndsWith` / `Contains` — how a `TruthyOption`'s pattern is matched |
 | `has_true_and_false_options` | Returns `true` only if a slice of `TruthyOption`s has at least one true *and* one false option — a rule set with only one side never matches anything, by design |

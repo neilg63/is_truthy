@@ -1,6 +1,6 @@
 [package]
 name = "is-truthy"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Flexible boolean parsing from string values with core, standard and custom truthy/falsy matching"
 repository = "https://github.com/neilg63/is-truthy"
@@ -11,4 +11,3 @@ categories = ["text-processing", "parsing"]
 [dependencies]
 alphanumeric = "0.2.0"
 simple-string-patterns = "0.4.0"
-to_segments = "0.1.2"

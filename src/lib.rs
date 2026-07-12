@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use alphanumeric::StripCharacters;
 use simple_string_patterns::SimpleMatch;
-use to_segments::ToSegments;
 
 const DEFAULT_NUM_MIN: i8 = 0;
 const DEFAULT_NUM_MAX: i8 = 1;
@@ -91,7 +90,7 @@ pub fn is_truthy_custom(
     txt: &str,
     rules: &TruthyRuleSet,
 ) -> Option<bool> {
-    if !has_true_and_false_options(&rules.options()) {
+    if !has_true_and_false_options(&rules.opts) {
         return None;
     }
     let txt = txt.trim();
@@ -337,47 +336,19 @@ impl TruthyRuleSet {
     }
 
     /// Get all options in this ruleset, including true and false options.
-    pub fn options(&self) -> &[TruthyOption] {
-        &self.opts
+    pub fn options(&self) -> Vec<&TruthyOption> {
+        self.opts.iter().collect()
     }
-}
 
-pub fn extract_truth_patterns(opts: &[TruthyOption], is_true: bool) -> Vec<String> {
-    opts.iter()
-        .filter(|o| o.is_true == is_true)
-        .map(|o| o.pattern.to_string())
-        .collect()
-}
+    /// Get only the true options in this ruleset.
+    pub fn true_options(&self) -> Vec<&TruthyOption> {
+        self.opts.iter().filter(|o| o.is_true).collect()
+    }
 
-/// Split a comma-separated string of true and false options into a list of TruthyOptions.
-/// Alternative true or false options may be split by | (pipe) characters.
-pub fn to_truth_options(
-    true_str: &str,
-    false_str: &str,
-    case_sensitive: bool,
-    match_mode: MatchMode,
-) -> Vec<TruthyOption> {
-    let build = |is_true: bool, pattern: &str| -> TruthyOption {
-        let opt = if is_true {
-            TruthyOption::new_true(pattern)
-        } else {
-            TruthyOption::new_false(pattern)
-        }
-        .match_mode(match_mode);
-        if case_sensitive {
-            opt.case_sensitive()
-        } else {
-            opt
-        }
-    };
-    let mut matchers: Vec<TruthyOption> = vec![];
-    for match_str in true_str.to_segments("|") {
-        matchers.push(build(true, &match_str));
+    /// Get only the false options in this ruleset.
+    pub fn false_options(&self) -> Vec<&TruthyOption> {
+        self.opts.iter().filter(|o| !o.is_true).collect()
     }
-    for match_str in false_str.to_segments("|") {
-        matchers.push(build(false, &match_str));
-    }
-    matchers
 }
 
 #[cfg(test)]

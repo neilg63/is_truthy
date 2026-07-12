@@ -13,11 +13,10 @@ dependencies = [
 
 [[package]]
 name = "is-truthy"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "alphanumeric",
  "simple-string-patterns",
- "to_segments",
 ]
 
 [[package]]
