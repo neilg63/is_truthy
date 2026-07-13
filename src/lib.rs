@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use alphanumeric::StripCharacters;
 use simple_string_patterns::SimpleMatch;
 
 const DEFAULT_NUM_MIN: i8 = 0;
@@ -26,7 +25,11 @@ pub fn is_truthy_in_range(txt: &str, empty_is_false: bool, min: i8, max: i8) -> 
         "false" => Some(false),
         "true" => Some(true),
         _ => {
-            if let Some(num) = test_str.to_first_number::<i8>() {
+            // Strict: the whole string must *be* the integer, not merely contain one.
+            // Using a fuzzy/embedded-digit extractor here would treat identifiers like
+            // "SKU001" or a date like "01/06/2024" as truthy just because they contain
+            // a "0" or "1" somewhere.
+            if let Ok(num) = test_str.parse::<i8>() {
                 if num >= min && num <= max {
                     Some(num > 0)
                 } else {
@@ -371,6 +374,22 @@ mod tests {
         assert_eq!("hello".is_truthy(), None);
         assert_eq!("99".is_truthy(), None);
         assert_eq!(String::from("true").is_truthy(), Some(true));
+    }
+
+    #[test]
+    fn test_is_truthy_ignores_embedded_digits() {
+        // These must NOT be treated as truthy/falsy just because they contain a "0" or "1"
+        // somewhere in the string (e.g. a product code or a date starting "01/..."):
+        // the whole string has to represent the integer, not merely contain one.
+        assert_eq!("SKU001".is_truthy_core(false), None);
+        assert_eq!("SKU002".is_truthy_core(false), None);
+        assert_eq!("A1".is_truthy_core(false), None);
+        assert_eq!("01/06/2024".is_truthy_core(false), None);
+        assert_eq!("Row0".is_truthy_core(false), None);
+        // whole-string integers in range still work as before
+        assert_eq!("1".is_truthy_core(false), Some(true));
+        assert_eq!("0".is_truthy_core(false), Some(false));
+        assert_eq!("01".is_truthy_core(false), Some(true));
     }
 
     #[test]
